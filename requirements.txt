@@ -1,0 +1,30 @@
+# LLM runtime
+ollama
+
+# Frontend
+streamlit
+
+# LangChain (retrieval pipeline)
+langchain
+langchain-community
+langchain-text-splitters
+
+# Vector search
+faiss-cpu
+
+# Embeddings
+sentence-transformers
+
+# Keyword search
+rank-bm25
+
+# Document loaders
+pypdf
+
+# Caching
+redis
+
+# Utilities
+python-dotenv
+numpy
+requests
