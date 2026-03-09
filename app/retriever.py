@@ -80,10 +80,31 @@ def bm25_search(query: str, corpus: list[str], metadata: list[dict], top_k: int 
 
 
 def reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = 60) -> list[dict]:
-    """Fuse multiple ranked lists using RRF: score = Σ 1 / (k + rank)."""
-    raise NotImplementedError
+    """Fuse multiple ranked lists using RRF: score = Σ 1 / (k + rank).
+
+    Deduplicates by 'text' field. Returns all fused results sorted by RRF score descending.
+    """
+    scores: dict[str, float] = {}
+    docs: dict[str, dict] = {}
+
+    for ranked in ranked_lists:
+        for rank, doc in enumerate(ranked, start=1):
+            key = (doc["chunk_id"], doc["source"])
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
+            if key not in docs:
+                docs[key] = doc
+
+    fused = []
+    for key, rrf_score in sorted(scores.items(), key=lambda x: x[1], reverse=True):
+        entry = dict(docs[key])
+        entry["score"] = rrf_score
+        fused.append(entry)
+    return fused
 
 
 def hybrid_search(query: str, index: faiss.Index, metadata: list[dict], corpus: list[str], top_k: int = 5) -> list[dict]:
     """Run vector_search and bm25_search, fuse with RRF, return top-k chunks."""
-    raise NotImplementedError
+    vector_results = vector_search(query, index, metadata, top_k=top_k)
+    bm25_results = bm25_search(query, corpus, metadata, top_k=top_k)
+    fused = reciprocal_rank_fusion([vector_results, bm25_results])
+    return fused[:top_k]

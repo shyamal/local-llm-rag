@@ -25,7 +25,7 @@ from pypdf import PdfReader
 
 from app.chat import OllamaClient
 from app.embedder import get_embedder
-from app.retriever import vector_search
+from app.retriever import hybrid_search
 
 load_dotenv()
 
@@ -177,8 +177,11 @@ def rag_query(query: str, model: str):
     if loaded is None:
         raise RuntimeError("No FAISS index found. Ingest documents before running a RAG query.")
 
-    index, metadata, _corpus = loaded
-    results = vector_search(query, index, metadata, top_k=TOP_K)
+    index, metadata, corpus = loaded
+    results = hybrid_search(query, index, metadata, corpus, top_k=TOP_K)
     chunks = [r["text"] for r in results]
+    if not chunks:
+        yield "No relevant documents found for your query. Try rephrasing or ingesting more documents."
+        return
     prompt = build_context_prompt(query, chunks)
     yield from OllamaClient().stream(prompt, model)
