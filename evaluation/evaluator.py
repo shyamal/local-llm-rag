@@ -141,7 +141,7 @@ def run_retrieval_evaluation(
         raise RuntimeError(
             "No FAISS index found. Run document ingestion before retrieval evaluation."
         )
-    index, metadata = loaded
+    index, metadata, _corpus = loaded
 
     per_question: list[dict] = []
     print(f"\nRetrieval Evaluation — Recall@{k}\n{'─' * 60}")
@@ -241,7 +241,7 @@ def run_faithfulness_evaluation(
         raise RuntimeError(
             "No FAISS index found. Run document ingestion before faithfulness evaluation."
         )
-    index, metadata = loaded
+    index, metadata, _corpus = loaded
 
     client = OllamaClient()
     per_question: list[dict] = []
@@ -399,7 +399,7 @@ def run_quality_evaluation(
         raise RuntimeError(
             "No FAISS index found. Run document ingestion before quality evaluation."
         )
-    index, metadata = loaded
+    index, metadata, _corpus = loaded
 
     client = OllamaClient()
     per_question: list[dict] = []

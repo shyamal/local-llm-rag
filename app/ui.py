@@ -434,7 +434,7 @@ def main():
             if st.session_state.ingested_file:
                 index_info = load_index()
                 if index_info:
-                    _, meta = index_info
+                    _, meta, _corpus = index_info
                     active_name = st.session_state.ingested_file[0]
                     st.info(f"Active document: **{active_name}** ({len(meta)} chunks)")
 

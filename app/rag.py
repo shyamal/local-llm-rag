@@ -36,6 +36,7 @@ TOP_K = int(os.getenv("TOP_K", 5))
 
 _INDEX_FILE = VECTOR_STORE_PATH / "index.faiss"
 _META_FILE = VECTOR_STORE_PATH / "metadata.json"
+_CORPUS_FILE = VECTOR_STORE_PATH / "corpus.json"
 
 
 _splitter = RecursiveCharacterTextSplitter(
@@ -90,20 +91,25 @@ def build_index(embeddings: np.ndarray) -> faiss.IndexFlatL2:
 
 
 def save_index(index: faiss.IndexFlatL2, metadata: list[dict]) -> None:
-    """Persist the FAISS index and chunk metadata to vector_store/ atomically."""
+    """Persist the FAISS index, chunk metadata, and BM25 corpus to vector_store/ atomically."""
     VECTOR_STORE_PATH.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".faiss", dir=VECTOR_STORE_PATH) as f:
         tmp_index = Path(f.name)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".json", dir=VECTOR_STORE_PATH) as f:
         tmp_meta = Path(f.name)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".json", dir=VECTOR_STORE_PATH) as f:
+        tmp_corpus = Path(f.name)
     faiss.write_index(index, str(tmp_index))
     tmp_meta.write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
+    corpus = [m["text"] for m in metadata]
+    tmp_corpus.write_text(json.dumps(corpus, ensure_ascii=False), encoding="utf-8")
     tmp_index.replace(_INDEX_FILE)
     tmp_meta.replace(_META_FILE)
+    tmp_corpus.replace(_CORPUS_FILE)
 
 
-def load_index() -> tuple[faiss.IndexFlatL2, list[dict]] | None:
-    """Load and return (index, metadata) from vector_store/, or None if missing."""
+def load_index() -> tuple[faiss.IndexFlatL2, list[dict], list[str]] | None:
+    """Load and return (index, metadata, corpus) from vector_store/, or None if missing."""
     if not _INDEX_FILE.exists() or not _META_FILE.exists():
         return None
     index = faiss.read_index(str(_INDEX_FILE))
@@ -111,7 +117,16 @@ def load_index() -> tuple[faiss.IndexFlatL2, list[dict]] | None:
         metadata = json.loads(_META_FILE.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Corrupted metadata file at {_META_FILE}: {e}") from e
-    return index, metadata
+    if _CORPUS_FILE.exists():
+        try:
+            corpus = json.loads(_CORPUS_FILE.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            corpus = [m["text"] for m in metadata]
+    else:
+        corpus = [m["text"] for m in metadata]
+    if len(corpus) != len(metadata):
+        corpus = [m["text"] for m in metadata]
+    return index, metadata, corpus
 
 
 def ingest_document(file_path: str, source_name: str | None = None) -> int:
@@ -162,7 +177,7 @@ def rag_query(query: str, model: str):
     if loaded is None:
         raise RuntimeError("No FAISS index found. Ingest documents before running a RAG query.")
 
-    index, metadata = loaded
+    index, metadata, _corpus = loaded
     results = vector_search(query, index, metadata, top_k=TOP_K)
     chunks = [r["text"] for r in results]
     prompt = build_context_prompt(query, chunks)

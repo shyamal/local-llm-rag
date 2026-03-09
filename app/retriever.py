@@ -10,6 +10,7 @@ Responsibilities:
 
 import numpy as np
 import faiss
+from rank_bm25 import BM25Okapi
 
 from app.embedder import get_embedder
 
@@ -46,8 +47,36 @@ def vector_search(query: str, index: faiss.Index, metadata: list[dict], top_k: i
 
 
 def bm25_search(query: str, corpus: list[str], metadata: list[dict], top_k: int = 5) -> list[dict]:
-    """Return top-k chunks from BM25 keyword search over the corpus."""
-    raise NotImplementedError
+    """Return top-k chunks from BM25 keyword search over the corpus.
+
+    Tokenises by lowercased whitespace split. Results are sorted by BM25 score
+    (higher = more relevant). Returns dicts from metadata with an added 'score' key.
+    """
+    if not query or not query.strip():
+        raise ValueError("query must be a non-empty string")
+    if top_k <= 0:
+        raise ValueError(f"top_k must be positive, got {top_k}")
+    if not corpus:
+        return []
+
+    tokenized_corpus = [doc.lower().split() for doc in corpus]
+    bm25 = BM25Okapi(tokenized_corpus)
+
+    tokenized_query = query.lower().split()
+    scores = bm25.get_scores(tokenized_query)
+
+    top_k = min(top_k, len(corpus))
+    top_indices = np.argsort(scores)[::-1][:top_k]
+
+    results = []
+    for idx in top_indices:
+        score = float(scores[idx])
+        if score == 0.0:
+            break  # remaining scores are also 0 — no keyword match
+        entry = dict(metadata[idx])
+        entry["score"] = score
+        results.append(entry)
+    return results
 
 
 def reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = 60) -> list[dict]:
