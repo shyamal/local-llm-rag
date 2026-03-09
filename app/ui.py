@@ -47,6 +47,14 @@ _TARGET_TPS = 20.0       # tokens/sec
 _TARGET_LATENCY = 5.0    # seconds
 
 
+def _safe_dataframe(rows: list[dict], **kwargs) -> None:
+    """Render a table using st.dataframe, falling back to st.table if pyarrow is unavailable."""
+    try:
+        st.dataframe(rows, **kwargs)
+    except Exception:
+        st.table(rows)
+
+
 @st.cache_resource
 def _get_client() -> OllamaClient:
     """Shared OllamaClient instance, created once per server lifetime."""
@@ -182,7 +190,7 @@ def _render_benchmarks_tab(available_models: list[str]) -> None:
             }
             for r in reversed(all_results)
         ]
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        _safe_dataframe(rows, use_container_width=True, hide_index=True)
 
         if st.button("Clear session metrics"):
             get_collector().clear()
@@ -234,7 +242,7 @@ def _render_benchmarks_tab(available_models: list[str]) -> None:
                 }
             )
         if summary_rows:
-            st.dataframe(summary_rows, use_container_width=True, hide_index=True)
+            _safe_dataframe(summary_rows, use_container_width=True, hide_index=True)
 
 
 def _render_evaluation_tab(available_models: list[str]) -> None:
@@ -316,7 +324,7 @@ def _render_evaluation_tab(available_models: list[str]) -> None:
                     }
                 )
         if meta_rows:
-            st.dataframe(meta_rows, use_container_width=True, hide_index=True)
+            _safe_dataframe(meta_rows, use_container_width=True, hide_index=True)
 
     st.divider()
 
