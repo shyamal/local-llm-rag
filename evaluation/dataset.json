@@ -1,0 +1,110 @@
+[
+    {
+        "id": "eval_001",
+        "question": "What is FAISS and what index types does it support?",
+        "expected_answer": "FAISS (Facebook AI Similarity Search) is a library for efficient similarity search and clustering of dense vectors. It supports index types including IndexFlatL2 for exact L2 distance computation and IVF indexes for approximate nearest neighbour search at scale.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            0
+        ]
+    },
+    {
+        "id": "eval_002",
+        "question": "What architecture do large language models use?",
+        "expected_answer": "Large language models use the transformer architecture with self-attention mechanisms that allow them to capture long-range dependencies in text.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            1
+        ]
+    },
+    {
+        "id": "eval_003",
+        "question": "How does retrieval-augmented generation reduce hallucination?",
+        "expected_answer": "RAG reduces hallucination by grounding LLM responses in retrieved document passages injected into the prompt as context, rather than relying solely on the model's parametric knowledge.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            2
+        ]
+    },
+    {
+        "id": "eval_004",
+        "question": "What embedding dimensions does all-MiniLM-L6-v2 produce?",
+        "expected_answer": "The all-MiniLM-L6-v2 model produces 384-dimensional embeddings.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            3
+        ]
+    },
+    {
+        "id": "eval_005",
+        "question": "How does BM25 score documents?",
+        "expected_answer": "BM25 scores documents based on term frequency and inverse document frequency (TF-IDF principles) without any neural network, excelling at exact keyword matching and rare term retrieval.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            4
+        ]
+    },
+    {
+        "id": "eval_006",
+        "question": "What is the purpose of IndexFlatL2 in FAISS?",
+        "expected_answer": "IndexFlatL2 computes exact L2 (Euclidean) distances between vectors, enabling exact similarity search across stored embeddings.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            0
+        ]
+    },
+    {
+        "id": "eval_007",
+        "question": "What is the benefit of running LLMs locally via Ollama?",
+        "expected_answer": "Running LLMs locally via Ollama avoids sending sensitive data to cloud providers.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            1
+        ]
+    },
+    {
+        "id": "eval_008",
+        "question": "How are retrieved document chunks used in the RAG pipeline?",
+        "expected_answer": "Retrieved document chunks are injected into the LLM prompt as context so the model generates an answer grounded in those retrieved passages.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            2
+        ]
+    },
+    {
+        "id": "eval_009",
+        "question": "How do embeddings enable semantic search?",
+        "expected_answer": "A query is encoded into an embedding vector and the nearest document vectors are retrieved, exploiting the property that semantically similar sentences have vectors close together in embedding space.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            3
+        ]
+    },
+    {
+        "id": "eval_010",
+        "question": "What is reciprocal rank fusion and why is it used in hybrid retrieval?",
+        "expected_answer": "Reciprocal rank fusion (RRF) is a method to merge ranked result lists from multiple retrieval systems. In hybrid retrieval it combines BM25 keyword search and dense vector search results to improve overall recall.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            4
+        ]
+    },
+    {
+        "id": "eval_011",
+        "question": "What tasks are modern large language models capable of performing?",
+        "expected_answer": "Modern LLMs are capable of instruction following, code generation, summarisation, and reasoning.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            1
+        ]
+    },
+    {
+        "id": "eval_012",
+        "question": "Why are Sentence Transformers useful for information retrieval?",
+        "expected_answer": "Sentence Transformers encode sentences into dense fixed-size embeddings that capture semantic meaning, so similar sentences have vectors close together, enabling semantic similarity search over documents.",
+        "source_document": "ai_systems.txt",
+        "relevant_chunk_ids": [
+            3
+        ]
+    }
+]
