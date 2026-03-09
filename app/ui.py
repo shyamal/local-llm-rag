@@ -12,6 +12,7 @@ Responsibilities:
 - Evaluation section with aggregated eval scores
 """
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -28,7 +29,17 @@ from app.rag import ingest_document, load_index, rag_query
 from benchmarks.benchmark import BENCHMARK_PROMPT, export_results, run_multi_model_benchmark
 
 FALLBACK_MODELS = ["mistral", "llama3"]
+
+_EVAL_MODE_MAP: dict[str, list[str]] = {
+    "All (retrieval + faithfulness + quality)": ["retrieval", "faithfulness", "quality"],
+    "Retrieval only": ["retrieval"],
+    "Faithfulness only": ["faithfulness"],
+    "Quality only": ["quality"],
+}
 DOCUMENTS_DIR = Path(os.getenv("DOCUMENTS_DIR", "data/documents"))
+
+_PROJECT_ROOT = Path(__file__).parent.parent
+_EVAL_RESULTS_DIR = _PROJECT_ROOT / "evaluation" / "results"
 
 # Performance targets from CLAUDE.md
 _TARGET_TTFT = 2.0       # seconds
@@ -40,6 +51,24 @@ _TARGET_LATENCY = 5.0    # seconds
 def _get_client() -> OllamaClient:
     """Shared OllamaClient instance, created once per server lifetime."""
     return OllamaClient()
+
+
+@st.cache_data(ttl=5)
+def _load_eval_results_cached() -> dict:
+    """Load available evaluation result files, cached for 5 seconds."""
+    results = {}
+    for key, filename in [
+        ("retrieval", "retrieval_eval.json"),
+        ("faithfulness", "faithfulness_eval.json"),
+        ("quality", "quality_eval.json"),
+    ]:
+        path = _EVAL_RESULTS_DIR / filename
+        if path.exists():
+            try:
+                results[key] = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+    return results
 
 
 @st.cache_data(ttl=30)
@@ -208,6 +237,132 @@ def _render_benchmarks_tab(available_models: list[str]) -> None:
             st.dataframe(summary_rows, use_container_width=True, hide_index=True)
 
 
+def _render_evaluation_tab(available_models: list[str]) -> None:
+    st.header("Evaluation")
+
+    # Show persistent success message from a previous run (survives st.rerun())
+    if st.session_state.pop("eval_success", None):
+        st.success("Evaluation complete.")
+
+    results = _load_eval_results_cached()
+
+    # ── Aggregated scores ──────────────────────────────────────────────────────
+    st.subheader("Aggregated Scores")
+    if not results:
+        st.info(
+            "No evaluation results found. Run the evaluation suite below "
+            "or via `python evaluation/run_eval.py` to generate scores."
+        )
+    else:
+        ret = results.get("retrieval", {})
+        faith = results.get("faithfulness", {})
+        qual = results.get("quality", {})
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        k = ret.get("k", 5)
+        recall_val = ret.get(f"mean_recall_at_{k}")
+        col1.metric(
+            f"Recall@{k}",
+            f"{recall_val:.4f}" if recall_val is not None else "—",
+            help="Fraction of relevant chunks found in top-k retrieval",
+        )
+
+        faith_val = faith.get("mean_faithfulness_score")
+        col2.metric(
+            "Faithfulness",
+            f"{faith_val:.2f} / 5" if faith_val is not None else "—",
+            help="LLM-as-judge: response grounded in retrieved context",
+        )
+
+        help_val = qual.get("mean_helpfulness")
+        acc_val = qual.get("mean_accuracy")
+        comp_val = qual.get("mean_completeness")
+        col3.metric(
+            "Helpfulness",
+            f"{help_val:.2f} / 5" if help_val is not None else "—",
+            help="Does the response address the question?",
+        )
+        col4.metric(
+            "Accuracy",
+            f"{acc_val:.2f} / 5" if acc_val is not None else "—",
+            help="Is the information factually correct?",
+        )
+        col5.metric(
+            "Completeness",
+            f"{comp_val:.2f} / 5" if comp_val is not None else "—",
+            help="Does the response cover all aspects of the question?",
+        )
+
+        if help_val is not None and acc_val is not None and comp_val is not None:
+            overall = round((help_val + acc_val + comp_val) / 3, 2)
+            st.caption(f"Overall Quality Score (mean of 3 dims): **{overall:.2f} / 5**")
+
+        # Run metadata table
+        st.divider()
+        meta_rows = []
+        for label, data, has_model in [
+            ("Retrieval", ret, False),
+            ("Faithfulness", faith, True),
+            ("Quality", qual, True),
+        ]:
+            if data:
+                meta_rows.append(
+                    {
+                        "Evaluation": label,
+                        "Model": data.get("model", "—") if has_model else "—",
+                        "Questions": data.get("num_questions", "—"),
+                        "Last Run": data.get("timestamp", "—")[:19].replace("T", " "),
+                    }
+                )
+        if meta_rows:
+            st.dataframe(meta_rows, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ── Run evaluations ────────────────────────────────────────────────────────
+    st.subheader("Run Evaluation Suite")
+    st.caption(
+        "Requires a document to be ingested and a FAISS index to be present. "
+        "Each run calls the local LLM once per question per LLM-based evaluator."
+    )
+
+    with st.form("eval_form"):
+        eval_model = st.selectbox("Judge model", available_models)
+        eval_k = st.number_input(
+            "Retrieval top-k", min_value=1, max_value=20, value=5, step=1
+        )
+        eval_mode = st.radio(
+            "Evaluations to run",
+            [
+                "All (retrieval + faithfulness + quality)",
+                "Retrieval only",
+                "Faithfulness only",
+                "Quality only",
+            ],
+            horizontal=True,
+        )
+        run_eval_clicked = st.form_submit_button(
+            "Run Evaluation", use_container_width=True
+        )
+
+    if run_eval_clicked:
+        from evaluation.run_eval import run_all
+
+        selected_modes = _EVAL_MODE_MAP[eval_mode]
+
+        with st.spinner(f"Running {eval_mode.lower()}…"):
+            try:
+                run_all(model=eval_model, k=int(eval_k), modes=selected_modes)
+                _load_eval_results_cached.clear()
+                st.session_state["eval_success"] = True
+                st.rerun()
+            except RuntimeError as exc:
+                st.warning(str(exc))
+            except Exception as exc:
+                st.error(f"Evaluation failed: {exc}")
+
+
 def main():
     st.set_page_config(page_title="Local AI Assistant", layout="wide")
 
@@ -224,6 +379,8 @@ def main():
         st.session_state.ingested_file = None
     if "comparison_results" not in st.session_state:
         st.session_state.comparison_results = {}
+    if "eval_success" not in st.session_state:
+        st.session_state.eval_success = False
 
     # Fetch model list once — used by both sidebar and benchmarks tab
     available_models, ollama_ok = _fetch_models(client.base_url)
@@ -288,13 +445,16 @@ def main():
             st.rerun()
 
     # --- Main content tabs ---
-    chat_tab, benchmarks_tab = st.tabs(["Chat", "Benchmarks"])
+    chat_tab, benchmarks_tab, eval_tab = st.tabs(["Chat", "Benchmarks", "Evaluation"])
 
     with chat_tab:
         _render_chat_tab(client, available_models)
 
     with benchmarks_tab:
         _render_benchmarks_tab(available_models)
+
+    with eval_tab:
+        _render_evaluation_tab(available_models)
 
 
 if __name__ == "__main__":
