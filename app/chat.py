@@ -10,15 +10,24 @@ Responsibilities:
 import json
 import os
 import time
+import uuid
 
+import numpy as np
+import redis as redis_lib
 import requests
 from dotenv import load_dotenv
 
+from app.embedder import get_embedder
 from app.metrics import MetricsCollector, get_collector
 
 load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+CACHE_SIMILARITY_THRESHOLD = float(os.getenv("CACHE_SIMILARITY_THRESHOLD", 0.92))
+CACHE_TTL = int(os.getenv("CACHE_TTL", 3600))
+
+_CACHE_INDEX_KEY = "semantic_cache:index"
 
 
 class OllamaClient:
@@ -123,12 +132,90 @@ class OllamaClient:
 
 
 class SemanticCache:
-    """Redis-backed semantic cache using embedding cosine similarity."""
+    """Redis-backed semantic cache using embedding cosine similarity.
+
+    Falls back to a no-op cache if Redis is unavailable, so the app works
+    fully offline without Redis running.
+    """
+
+    def __init__(
+        self,
+        redis_url: str = REDIS_URL,
+        threshold: float = CACHE_SIMILARITY_THRESHOLD,
+        ttl: int = CACHE_TTL,
+    ):
+        self._threshold = threshold
+        self._ttl = ttl
+        try:
+            self._redis = redis_lib.from_url(redis_url, decode_responses=True)
+            self._redis.ping()
+            self._available = True
+        except Exception:
+            self._redis = None
+            self._available = False
+
+    @property
+    def available(self) -> bool:
+        return self._available
 
     def get(self, query: str) -> str | None:
-        """Return cached response if a similar query exists, else None."""
-        raise NotImplementedError
+        """Return cached response if a similar query exists above threshold, else None."""
+        if not self._available:
+            return None
+        embedder = get_embedder()
+        query_vec = embedder.encode([query], convert_to_numpy=True, show_progress_bar=False)[0]
+        try:
+            keys = list(self._redis.smembers(_CACHE_INDEX_KEY))
+        except Exception:
+            return None
+
+        if not keys:
+            return None
+
+        # Batch all hgetall calls into a single pipeline round-trip
+        try:
+            pipe = self._redis.pipeline()
+            for key in keys:
+                pipe.hgetall(key)
+            entries = pipe.execute()
+        except Exception:
+            return None
+
+        expired_keys = []
+        best_score = -1.0
+        best_response: str | None = None
+        for key, entry in zip(keys, entries):
+            if not entry:
+                expired_keys.append(key)
+                continue
+            stored_vec = np.array(json.loads(entry["embedding"]), dtype=np.float32)
+            norm = np.linalg.norm(query_vec) * np.linalg.norm(stored_vec)
+            score = float(np.dot(query_vec, stored_vec) / (norm + 1e-8))
+            if score > best_score:
+                best_score = score
+                best_response = entry["response"]
+
+        if expired_keys:
+            try:
+                self._redis.srem(_CACHE_INDEX_KEY, *expired_keys)
+            except Exception:
+                pass
+
+        return best_response if best_score >= self._threshold else None
 
     def set(self, query: str, response: str) -> None:
         """Store query embedding and response in Redis with TTL."""
-        raise NotImplementedError
+        if not self._available:
+            return
+        embedder = get_embedder()
+        query_vec = embedder.encode([query], convert_to_numpy=True, show_progress_bar=False)[0]
+        key = f"semantic_cache:{uuid.uuid4().hex}"
+        try:
+            self._redis.hset(key, mapping={
+                "embedding": json.dumps(query_vec.tolist()),
+                "response": response,
+            })
+            self._redis.expire(key, self._ttl)
+            self._redis.sadd(_CACHE_INDEX_KEY, key)
+        except Exception:
+            pass

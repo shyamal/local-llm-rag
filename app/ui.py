@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 
-from app.chat import OllamaClient
+from app.chat import OllamaClient, SemanticCache
 from app.metrics import get_collector
 from app.rag import ingest_document, load_index, rag_query
 from benchmarks.benchmark import BENCHMARK_PROMPT, export_results, run_multi_model_benchmark
@@ -59,6 +59,12 @@ def _safe_dataframe(rows: list[dict], **kwargs) -> None:
 def _get_client() -> OllamaClient:
     """Shared OllamaClient instance, created once per server lifetime."""
     return OllamaClient()
+
+
+@st.cache_resource
+def _get_cache() -> SemanticCache:
+    """Shared SemanticCache instance. Falls back gracefully if Redis is unavailable."""
+    return SemanticCache()
 
 
 @st.cache_data(ttl=5)
@@ -112,28 +118,36 @@ def _render_chat_tab(client: OllamaClient, available_models: list[str], prompt: 
             st.write(prompt)
 
         full_response = ""
+        cache = _get_cache()
         with st.chat_message("assistant"):
             placeholder = st.empty()
-            try:
-                if st.session_state.rag_mode:
-                    gen = rag_query(
-                        prompt,
-                        model=st.session_state.selected_model,
-                        rewrite=st.session_state.query_rewrite,
-                    )
-                else:
-                    gen = client.chat_stream(
-                        messages=st.session_state.messages,
-                        model=st.session_state.selected_model,
-                    )
-                for token in gen:
-                    full_response += token
-                    placeholder.markdown(full_response + "▌")
+            cached_response = cache.get(prompt)
+            if cached_response is not None:
+                full_response = cached_response
                 placeholder.markdown(full_response)
-            except RuntimeError as exc:
-                placeholder.warning(str(exc))
-            except Exception as exc:
-                placeholder.error(f"Error: {exc}")
+            else:
+                try:
+                    if st.session_state.rag_mode:
+                        gen = rag_query(
+                            prompt,
+                            model=st.session_state.selected_model,
+                            rewrite=st.session_state.query_rewrite,
+                        )
+                    else:
+                        gen = client.chat_stream(
+                            messages=st.session_state.messages,
+                            model=st.session_state.selected_model,
+                        )
+                    for token in gen:
+                        full_response += token
+                        placeholder.markdown(full_response + "▌")
+                    placeholder.markdown(full_response)
+                except RuntimeError as exc:
+                    placeholder.warning(str(exc))
+                except Exception as exc:
+                    placeholder.error(f"Error: {exc}")
+                if full_response:
+                    cache.set(prompt, full_response)
 
         if full_response:
             st.session_state.messages.append(
@@ -453,6 +467,9 @@ def main():
                     st.info(f"Active document: **{active_name}** ({len(meta)} chunks)")
 
         st.divider()
+
+        cache_status = "active" if _get_cache().available else "inactive (Redis unavailable)"
+        st.caption(f"Semantic cache: {cache_status}")
 
         if st.button("Clear History", use_container_width=True):
             st.session_state.messages = []
