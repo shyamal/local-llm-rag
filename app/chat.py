@@ -28,15 +28,22 @@ class OllamaClient:
         self.base_url = base_url.rstrip("/")
         self._generate_url = f"{self.base_url}/api/generate"
 
-    def generate(self, prompt: str, model: str) -> str:
+    def generate(self, prompt: str, model: str, collector: MetricsCollector | None = None) -> str:
         """Send a prompt and return the full response (non-streaming)."""
+        collector = collector if collector is not None else get_collector()
+        start_time = time.monotonic()
         payload = {"model": model, "prompt": prompt, "stream": False}
         response = requests.post(self._generate_url, json=payload, timeout=120)
         response.raise_for_status()
         data = response.json()
         if "response" not in data:
             raise ValueError(f"Unexpected Ollama response shape: {data}")
-        return data["response"]
+        text = data["response"]
+        total_latency = time.monotonic() - start_time
+        token_count = len(text.split())
+        # TTFT approximated as total_latency for non-streaming calls
+        collector.record(model, total_latency, token_count, total_latency)
+        return text
 
     def stream(self, prompt: str, model: str, collector: MetricsCollector | None = None):
         """Yield tokens as they arrive from Ollama (streaming)."""

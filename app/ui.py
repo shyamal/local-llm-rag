@@ -98,7 +98,7 @@ def _ingest_document(uploaded_file) -> int:
     return ingest_document(str(dest), source_name=safe_name)
 
 
-def _render_chat_tab(client: OllamaClient, available_models: list[str]) -> None:
+def _render_chat_tab(client: OllamaClient, available_models: list[str], prompt: str | None = None) -> None:
     mode_label = "Document QA" if st.session_state.rag_mode else "Chat"
     st.header(mode_label)
 
@@ -106,39 +106,38 @@ def _render_chat_tab(client: OllamaClient, available_models: list[str]) -> None:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-    placeholder = (
-        "Ask a question about the document…"
-        if st.session_state.rag_mode
-        else "Ask anything…"
-    )
-
-    if prompt := st.chat_input(placeholder):
+    if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.write(prompt)
 
-        response_text = None
+        full_response = ""
         with st.chat_message("assistant"):
+            placeholder = st.empty()
             try:
                 if st.session_state.rag_mode:
-                    response_text = st.write_stream(
-                        rag_query(prompt, model=st.session_state.selected_model)
+                    gen = rag_query(
+                        prompt,
+                        model=st.session_state.selected_model,
+                        rewrite=st.session_state.query_rewrite,
                     )
                 else:
-                    response_text = st.write_stream(
-                        client.chat_stream(
-                            messages=st.session_state.messages,
-                            model=st.session_state.selected_model,
-                        )
+                    gen = client.chat_stream(
+                        messages=st.session_state.messages,
+                        model=st.session_state.selected_model,
                     )
+                for token in gen:
+                    full_response += token
+                    placeholder.markdown(full_response + "▌")
+                placeholder.markdown(full_response)
             except RuntimeError as exc:
-                st.warning(str(exc))
+                placeholder.warning(str(exc))
             except Exception as exc:
-                st.error(f"Error: {exc}")
+                placeholder.error(f"Error: {exc}")
 
-        if response_text:
+        if full_response:
             st.session_state.messages.append(
-                {"role": "assistant", "content": response_text}
+                {"role": "assistant", "content": full_response}
             )
 
 
@@ -389,6 +388,8 @@ def main():
         st.session_state.comparison_results = {}
     if "eval_success" not in st.session_state:
         st.session_state.eval_success = False
+    if "query_rewrite" not in st.session_state:
+        st.session_state.query_rewrite = False
 
     # Fetch model list once — used by both sidebar and benchmarks tab
     available_models, ollama_ok = _fetch_models(client.base_url)
@@ -423,6 +424,11 @@ def main():
         )
 
         if st.session_state.rag_mode:
+            st.session_state.query_rewrite = st.toggle(
+                "Query rewriting",
+                value=st.session_state.query_rewrite,
+                help="Reformulate your question via the LLM before retrieval to improve recall.",
+            )
             st.caption("Upload a document to answer questions from its contents.")
             uploaded = st.file_uploader(
                 "Upload document",
@@ -452,11 +458,19 @@ def main():
             st.session_state.messages = []
             st.rerun()
 
+    # --- Chat input (outside st.tabs to prevent double-render during st.write_stream) ---
+    _chat_placeholder = (
+        "Ask a question about the document…"
+        if st.session_state.rag_mode
+        else "Ask anything…"
+    )
+    _pending_prompt = st.chat_input(_chat_placeholder)
+
     # --- Main content tabs ---
     chat_tab, benchmarks_tab, eval_tab = st.tabs(["Chat", "Benchmarks", "Evaluation"])
 
     with chat_tab:
-        _render_chat_tab(client, available_models)
+        _render_chat_tab(client, available_models, prompt=_pending_prompt)
 
     with benchmarks_tab:
         _render_benchmarks_tab(available_models)

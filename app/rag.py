@@ -162,23 +162,50 @@ def build_context_prompt(query: str, chunks: list[str]) -> str:
     )
 
 
+_REWRITE_PROMPT_TEMPLATE = (
+    "You are a search query optimizer. Reformulate the question below to improve "
+    "retrieval from a document store. Rules:\n"
+    "- Expand abbreviations and acronyms\n"
+    "- Make implicit concepts explicit\n"
+    "- Focus on the core information need\n"
+    "- Return ONLY the reformulated query on a single line — no explanation, no preamble.\n\n"
+    "Original question: {query}\n"
+    "Reformulated query:"
+)
+
+
 def rewrite_query(query: str, model: str) -> str:
-    """Use the local LLM to reformulate query for improved retrieval."""
-    raise NotImplementedError
+    """Use the local LLM to reformulate query for improved retrieval.
+
+    Returns the rewritten query string. Falls back to the original query if
+    the LLM returns an empty response.
+    """
+    prompt = _REWRITE_PROMPT_TEMPLATE.replace("{query}", query)
+    raw = OllamaClient().generate(prompt, model)
+    rewritten = next((line.strip() for line in raw.splitlines() if line.strip()), "")
+    return rewritten or query
 
 
-def rag_query(query: str, model: str):
+def rag_query(query: str, model: str, rewrite: bool = False):
     """Run full RAG pipeline: retrieve → build prompt → stream response.
 
     Yields tokens as they arrive from OllamaClient.stream().
     Raises RuntimeError if no FAISS index exists (documents must be ingested first).
+    If rewrite=True, the query is reformulated via rewrite_query() before retrieval.
     """
     loaded = load_index()
     if loaded is None:
         raise RuntimeError("No FAISS index found. Ingest documents before running a RAG query.")
 
+    retrieval_query = query
+    if rewrite:
+        try:
+            retrieval_query = rewrite_query(query, model)
+        except Exception:
+            retrieval_query = query  # rewrite is optional; fall back silently on failure
+
     index, metadata, corpus = loaded
-    results = hybrid_search(query, index, metadata, corpus, top_k=TOP_K)
+    results = hybrid_search(retrieval_query, index, metadata, corpus, top_k=TOP_K)
     chunks = [r["text"] for r in results]
     if not chunks:
         yield "No relevant documents found for your query. Try rephrasing or ingesting more documents."
