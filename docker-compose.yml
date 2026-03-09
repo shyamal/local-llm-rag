@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      # Ollama runs on the host machine — connect via host.docker.internal
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Redis connects to the sibling service
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./vector_store:/app/vector_store
+      - ./data/documents:/app/data/documents
+      - ./benchmarks/results:/app/benchmarks/results
+      - ./evaluation/results:/app/evaluation/results
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      # Required on Linux to resolve host.docker.internal
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis_data:

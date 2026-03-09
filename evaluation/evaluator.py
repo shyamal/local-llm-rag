@@ -10,11 +10,12 @@ Responsibilities:
 """
 
 import json
-import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+from app.config import DEFAULT_MODEL, TOP_K
 
 _REQUIRED_FIELDS = {"id", "question", "expected_answer", "source_document", "relevant_chunk_ids"}
 
@@ -115,7 +116,7 @@ Score:\
 
 def run_retrieval_evaluation(
     dataset_path: str = "evaluation/dataset.json",
-    k: int = 5,
+    k: int = TOP_K,
 ) -> dict:
     """Run Recall@k over the full dataset using vector search.
 
@@ -214,8 +215,8 @@ def evaluate_faithfulness(question: str, context: str, response: str, model: str
 
 def run_faithfulness_evaluation(
     dataset_path: str = "evaluation/dataset.json",
-    model: str = "mistral",
-    k: int = 5,
+    model: str = DEFAULT_MODEL,
+    k: int = TOP_K,
 ) -> dict:
     """Generate a RAG response for each dataset entry and score its faithfulness.
 
@@ -372,8 +373,8 @@ def evaluate_response_quality(question: str, response: str, model: str) -> dict:
 
 def run_quality_evaluation(
     dataset_path: str = "evaluation/dataset.json",
-    model: str = "mistral",
-    k: int = 5,
+    model: str = DEFAULT_MODEL,
+    k: int = TOP_K,
 ) -> dict:
     """Generate a RAG response for each dataset entry and score its quality.
 
@@ -482,12 +483,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--k",
         type=int,
-        default=int(os.getenv("TOP_K", "5")),
+        default=TOP_K,
         help="Retrieval cutoff k (default: TOP_K env var or 5)",
     )
     parser.add_argument(
         "--model",
-        default=os.getenv("DEFAULT_MODEL", "mistral"),
+        default=DEFAULT_MODEL,
         help="Ollama model for LLM-as-judge (default: DEFAULT_MODEL env var or mistral)",
     )
     args = parser.parse_args()

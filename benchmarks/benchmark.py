@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.chat import OllamaClient
+from app.config import FALLBACK_MODELS
 from app.metrics import MetricsCollector
 
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--models",
         nargs="+",
-        default=["mistral", "llama3"],
+        default=FALLBACK_MODELS,
         help="Ollama model names to benchmark (default: mistral llama3)",
     )
     parser.add_argument(

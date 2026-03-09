@@ -5,14 +5,9 @@ Centralised here so both rag.py and retriever.py use the same model instance
 without creating a circular import between those modules.
 """
 
-import os
-
-from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 
-load_dotenv()
-
-EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+from app.config import EMBEDDING_MODEL
 
 _embedder: SentenceTransformer | None = None
 

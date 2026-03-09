@@ -1,6 +1,3 @@
-# LLM runtime
-ollama
-
 # Frontend
 streamlit
 

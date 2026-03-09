@@ -24,11 +24,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 
 from app.chat import OllamaClient, SemanticCache
+from app.config import (
+    DEFAULT_MODEL,
+    DOCUMENTS_DIR,
+    FALLBACK_MODELS,
+    TARGET_LATENCY,
+    TARGET_TPS,
+    TARGET_TTFT,
+)
 from app.metrics import get_collector
 from app.rag import ingest_document, load_index, rag_query
 from benchmarks.benchmark import BENCHMARK_PROMPT, export_results, run_multi_model_benchmark
-
-FALLBACK_MODELS = ["mistral", "llama3"]
 
 _EVAL_MODE_MAP: dict[str, list[str]] = {
     "All (retrieval + faithfulness + quality)": ["retrieval", "faithfulness", "quality"],
@@ -36,15 +42,9 @@ _EVAL_MODE_MAP: dict[str, list[str]] = {
     "Faithfulness only": ["faithfulness"],
     "Quality only": ["quality"],
 }
-DOCUMENTS_DIR = Path(os.getenv("DOCUMENTS_DIR", "data/documents"))
 
 _PROJECT_ROOT = Path(__file__).parent.parent
 _EVAL_RESULTS_DIR = _PROJECT_ROOT / "evaluation" / "results"
-
-# Performance targets from CLAUDE.md
-_TARGET_TTFT = 2.0       # seconds
-_TARGET_TPS = 20.0       # tokens/sec
-_TARGET_LATENCY = 5.0    # seconds
 
 
 def _safe_dataframe(rows: list[dict], **kwargs) -> None:
@@ -168,21 +168,21 @@ def _render_benchmarks_tab(available_models: list[str]) -> None:
         col1.metric(
             "TTFT",
             f"{last['ttft']:.3f}s",
-            delta=f"{_TARGET_TTFT - last['ttft']:+.3f}s vs {_TARGET_TTFT}s target",
+            delta=f"{TARGET_TTFT - last['ttft']:+.3f}s vs {TARGET_TTFT}s target",
             delta_color="normal",
             help="Time To First Token — target < 2s",
         )
         col2.metric(
             "Tokens / sec",
             f"{last['tokens_per_sec']:.1f}",
-            delta=f"{last['tokens_per_sec'] - _TARGET_TPS:+.1f} vs {_TARGET_TPS:.0f} target",
+            delta=f"{last['tokens_per_sec'] - TARGET_TPS:+.1f} vs {TARGET_TPS:.0f} target",
             delta_color="normal",
             help="Throughput — target > 20 tokens/s",
         )
         col3.metric(
             "Total Latency",
             f"{last['total_latency']:.3f}s",
-            delta=f"{_TARGET_LATENCY - last['total_latency']:+.3f}s vs {_TARGET_LATENCY}s target",
+            delta=f"{TARGET_LATENCY - last['total_latency']:+.3f}s vs {TARGET_LATENCY}s target",
             delta_color="normal",
             help="End-to-end generation time — target < 5s",
         )
@@ -393,7 +393,7 @@ def main():
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "selected_model" not in st.session_state:
-        st.session_state.selected_model = "mistral"
+        st.session_state.selected_model = DEFAULT_MODEL
     if "rag_mode" not in st.session_state:
         st.session_state.rag_mode = False
     if "ingested_file" not in st.session_state:

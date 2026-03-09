@@ -12,6 +12,7 @@ import numpy as np
 import faiss
 from rank_bm25 import BM25Okapi
 
+from app.config import RRF_K
 from app.embedder import get_embedder
 
 
@@ -79,7 +80,7 @@ def bm25_search(query: str, corpus: list[str], metadata: list[dict], top_k: int 
     return results
 
 
-def reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = 60) -> list[dict]:
+def reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = RRF_K) -> list[dict]:
     """Fuse multiple ranked lists using RRF: score = Σ 1 / (k + rank).
 
     Deduplicates by 'text' field. Returns all fused results sorted by RRF score descending.

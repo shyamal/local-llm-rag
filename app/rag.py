@@ -13,26 +13,18 @@ Responsibilities:
 """
 
 import json
-import os
 import tempfile
 from pathlib import Path
 
 import faiss
 import numpy as np
-from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
 from app.chat import OllamaClient
+from app.config import CHUNK_OVERLAP, CHUNK_SIZE, TOP_K, VECTOR_STORE_PATH
 from app.embedder import get_embedder
 from app.retriever import hybrid_search
-
-load_dotenv()
-
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 512))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 64))
-VECTOR_STORE_PATH = Path(os.getenv("VECTOR_STORE_PATH", "vector_store/"))
-TOP_K = int(os.getenv("TOP_K", 5))
 
 _INDEX_FILE = VECTOR_STORE_PATH / "index.faiss"
 _META_FILE = VECTOR_STORE_PATH / "metadata.json"

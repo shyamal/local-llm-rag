@@ -8,24 +8,16 @@ Responsibilities:
 """
 
 import json
-import os
 import time
 import uuid
 
 import numpy as np
 import redis as redis_lib
 import requests
-from dotenv import load_dotenv
 
+from app.config import CACHE_SIMILARITY_THRESHOLD, CACHE_TTL, OLLAMA_BASE_URL, REDIS_URL
 from app.embedder import get_embedder
 from app.metrics import MetricsCollector, get_collector
-
-load_dotenv()
-
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-CACHE_SIMILARITY_THRESHOLD = float(os.getenv("CACHE_SIMILARITY_THRESHOLD", 0.92))
-CACHE_TTL = int(os.getenv("CACHE_TTL", 3600))
 
 _CACHE_INDEX_KEY = "semantic_cache:index"
 
